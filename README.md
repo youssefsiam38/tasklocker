@@ -53,11 +53,13 @@ func main() {
     runTask := func(taskID int) {
         defer wg.Done()
         postfix := fmt.Sprintf("%d", taskID)
-        success, err := tasklocker.AcquireLock(ctx, client, prefix, postfix, allowedConcurrentTasks, timeout)
+        success, exist, err := tasklocker.AcquireLock(ctx, client, prefix, postfix, allowedConcurrentTasks, timeout)
         if err != nil {
             log.Fatalf("failed to acquire lock for task %d: %v", taskID, err)
         }
-        if success {
+        if exist {
+            fmt.Printf("Task %d could not acquire the lock because it already exists\n", taskID)
+        } else if success {
             fmt.Printf("Task %d acquired the lock\n", taskID)
             // Simulate task duration
             time.Sleep(timeout / 2) // Run task for half of the timeout duration
@@ -100,10 +102,14 @@ func main() {
 ### `AcquireLock`
 
 ```go
-func AcquireLock(ctx context.Context, client *redis.Client, prefix, postfix string, allowedConcurrentTasks int, timeout time.Duration) (bool, error)
+func AcquireLock(ctx context.Context, client *redis.Client, prefix, postfix string, allowedConcurrentTasks int, timeout time.Duration) (bool, bool, error)
 ```
 
-Attempts to acquire a lock for concurrent tasks using Redis. Returns `true` if the lock is successfully acquired, otherwise `false`.
+Attempts to acquire a lock for concurrent tasks using Redis. Returns:
+- `true` if the lock is successfully acquired,
+- `false` if the lock cannot be acquired,
+- `true` for the second return value if the key already exists (indicating that the task is already running or locked),
+- `nil` if no error occurs or an error if the operation fails.
 
 - **Parameters**:
   - `ctx`: The context for the Redis operations.
@@ -112,6 +118,11 @@ Attempts to acquire a lock for concurrent tasks using Redis. Returns `true` if t
   - `postfix`: The unique identifier for the task (e.g., task id).
   - `allowedConcurrentTasks`: The maximum number of concurrent tasks allowed.
   - `timeout`: The duration after which the lock should be automatically released.
+
+- **Return Values**:
+  - `success` (`bool`): Indicates whether the lock was successfully acquired.
+  - `exist` (`bool`): Indicates whether the key already exists (`true` if the key exists, `false` otherwise).
+  - `err` (`error`): The error encountered, if any.
 
 ### `ReleaseLock`
 
