@@ -6,7 +6,7 @@
 
 - **Concurrency Control**: Limit the number of concurrent tasks using Redis.
 - **Automatic Timeout**: Locks automatically expire after a specified duration, ensuring tasks don't hold the lock indefinitely.
-- **Atomic Operations**: Uses Redis Lua scripts to ensure atomicity and thread safety.
+- **Atomic Operations**: Uses Redis commands to ensure thread safety.
 
 ## Installation
 
@@ -43,7 +43,7 @@ func main() {
     client := redis.NewClient(&redis.Options{
         Addr: "localhost:6379", // Redis server address
     })
-    key := "concurrentTasks"
+    prefix := "google_places_brands_processor"
     allowedConcurrentTasks := 3
     timeout := 5 * time.Second
 
@@ -52,7 +52,8 @@ func main() {
     // Function to simulate task execution
     runTask := func(taskID int) {
         defer wg.Done()
-        success, err := tasklocker.AcquireLock(ctx, client, key, allowedConcurrentTasks, timeout)
+        postfix := fmt.Sprintf("%d", taskID)
+        success, err := tasklocker.AcquireLock(ctx, client, prefix, postfix, allowedConcurrentTasks, timeout)
         if err != nil {
             log.Fatalf("failed to acquire lock for task %d: %v", taskID, err)
         }
@@ -60,7 +61,7 @@ func main() {
             fmt.Printf("Task %d acquired the lock\n", taskID)
             // Simulate task duration
             time.Sleep(timeout / 2) // Run task for half of the timeout duration
-            if err := tasklocker.ReleaseLock(ctx, client, key); err != nil {
+            if err := tasklocker.ReleaseLock(ctx, client, prefix, postfix); err != nil {
                 log.Fatalf("failed to release lock for task %d: %v", taskID, err)
             }
             fmt.Printf("Task %d released the lock\n", taskID)
@@ -99,7 +100,7 @@ func main() {
 ### `AcquireLock`
 
 ```go
-func AcquireLock(ctx context.Context, client *redis.Client, key string, allowedConcurrentTasks int, timeout time.Duration) (bool, error)
+func AcquireLock(ctx context.Context, client *redis.Client, prefix, postfix string, allowedConcurrentTasks int, timeout time.Duration) (bool, error)
 ```
 
 Attempts to acquire a lock for concurrent tasks using Redis. Returns `true` if the lock is successfully acquired, otherwise `false`.
@@ -107,22 +108,24 @@ Attempts to acquire a lock for concurrent tasks using Redis. Returns `true` if t
 - **Parameters**:
   - `ctx`: The context for the Redis operations.
   - `client`: The Redis client instance.
-  - `key`: The key used to track the concurrent tasks in Redis.
+  - `prefix`: The prefix for the task key.
+  - `postfix`: The unique identifier for the task (e.g., task id).
   - `allowedConcurrentTasks`: The maximum number of concurrent tasks allowed.
   - `timeout`: The duration after which the lock should be automatically released.
 
 ### `ReleaseLock`
 
 ```go
-func ReleaseLock(ctx context.Context, client *redis.Client, key string) error
+func ReleaseLock(ctx context.Context, client *redis.Client, prefix, postfix string) error
 ```
 
-Releases the lock for concurrent tasks by decrementing the counter in Redis.
+Releases the lock for concurrent tasks by deleting the task-specific key in Redis.
 
 - **Parameters**:
   - `ctx`: The context for the Redis operations.
   - `client`: The Redis client instance.
-  - `key`: The key used to track the concurrent tasks in Redis.
+  - `prefix`: The prefix for the task key.
+  - `postfix`: The unique identifier for the task (e.g., task id).
 
 ## License
 
